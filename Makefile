@@ -2,31 +2,35 @@ COMP=gcc
 CFLAGS=-Wall -Wextra -Iinclude -fPIC
 SCFLAGS=$(CFLAGS) -shared
 
-INC_FOLDER=include
-SRC_FOLDER=src
-TST_FOLDER=test
+INC_DIR=include
+SRC_DIR=src
+TST_DIR=test
 
-INSTALL_FOLDER=install
-LIB_FOLDER=$(INSTALL_FOLDER)/lib
-BIN_FOLDER=$(INSTALL_FOLDER)/bin
+INSTALL_DIR=install
+LIB_DIR=$(INSTALL_DIR)/lib
+BIN_DIR=$(INSTALL_DIR)/bin
+TST_FILES=$(shell ls $(TST_DIR) | sed 's/\.c//g')
+
+.PHONY: thread 
 
 all: install
-
-install/thread.o: src/thread.c
-		$(COMP) $(CFLAGS) -o $@ -c $^
-
-libthread.so: $(INSTALL_FOLDER)/thread.o
-		$(COMP) $(SCFLAGS) $^ -o $(LIB_FOLDER)/$@
-
-install/bin/%: test/%.c libthread.so
-		$(COMP) $(CFLAGS) -o $@  $^ -lthread -L$(LIB_FOLDER) && ./$(BIN_FOLDER)/$@
-
-test: install $(BIN_FOLDER)/%
-
-install : 
-		mkdir ${INSTALL_FOLDER} ${LIB_FOLDER} ${BIN_FOLDER}
 		
+thread: $(SRC_DIR)/thread.c $(INC_DIR)/thread.h
+		echo -n "Compiling the thread Library"
+		$(COMP) $(CFLAGS) -o $(INSTALL_DIR)/$@.o -c $<
+		$(COMP) $(SCFLAGS) $(INSTALL_DIR)/$@.o -o $(LIB_DIR)/lib$@.so
+		rm $(INSTALL_DIR)/$@.o
 
+%: test/%.c 
+		echo "Compile the test $@";
+		$(COMP) $(CFLAGS) -o $(BIN_DIR)/$@  $< -lthread -L$(LIB_DIR) 
+
+install_dir : 
+		mkdir -p ${INSTALL_DIR} ${LIB_DIR} ${BIN_DIR}
+
+install: install_dir thread 
+
+test:   $(LIB_DIR)/libthread.so $(TST_FILES)
 
 clean :
 		rm -r install
