@@ -55,4 +55,4 @@ graphs:
 		python3 $(GRP_DIR)/draw_script.py
 
 clean :
-		rm -r $(INSTALL_DIR) $(GRP_DIR)/imgs $(GRP_DIR)/data 
+		rm -r $(INSTALL_DIR) $(GRP_DIR)/imgs $(GRP_DIR)/data

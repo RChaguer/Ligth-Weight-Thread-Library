@@ -1,5 +1,5 @@
-#include "../include/thread.h"
-#include "../include/queue.h"
+#include "thread.h"
+#include "queue.h"
 
 
 /* recuperer l'identifiant du thread courant.

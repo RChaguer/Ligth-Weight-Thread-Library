@@ -1,0 +1,2 @@
+// the option to swap between our implementation and pthread
+#cmakedefine USE_PTHREAD

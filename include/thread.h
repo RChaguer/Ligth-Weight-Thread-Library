@@ -1,6 +1,6 @@
 #ifndef __THREAD_H__
 #define __THREAD_H__
-
+#include "config.h"
 #ifndef USE_PTHREAD
 
 /* identifiant de thread

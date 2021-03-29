@@ -1,0 +1,17 @@
+# IntelliJ
+.idea
+*.iml
+
+# Build&Install artifacts
+out
+*build
+install
+
+# Log file
+*.log
+
+# Misc
+#*_test
+.nfs*
+.Trash-*
+*~
