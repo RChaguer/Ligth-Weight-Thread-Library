@@ -33,3 +33,29 @@ foreach(tst IN LISTS tests)
     #register_test_thread(${tst})
     #install(TARGETS ${tst} DESTINATION bin)
 endforeach()
+
+# add custom target check to run tests
+add_custom_target(check
+        COMMAND ${CMAKE_BUILD_TOOL} test
+        DEPENDS ${tests}
+        )
+
+# add custom target graphs
+add_custom_target(graphs
+        COMMAND python3 ${CMAKE_SOURCE_DIR}/graphs/draw_script.py
+        DEPENDS ${tests} list(TRANSFORM ${tests} APPEND pthread)
+        )
+
+# add custom target valgrind
+find_program(MEMORYCHECK_COMMAND valgrind)
+set(MEMORYCHECK_COMMAND_OPTIONS "-v --leak-check=full --show-reachable=yes --track-origins=yes --vgdb-error=1")
+add_custom_target(valgrind
+        COMMAND ${CMAKE_CTEST_COMMAND}
+            --force-new-ctest-process --test-action memcheck
+        COMMAND cat "${CMAKE_BINARY_DIR}/Testing/Temporary/MemoryChecker.*.log"
+        DEPENDS ${tests}
+        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+        )
+
+# add tests here
+# add_test(01-main-pthread 01-main-pthread)
