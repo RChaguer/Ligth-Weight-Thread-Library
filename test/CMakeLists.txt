@@ -48,7 +48,7 @@ add_custom_target(graphs
 
 # add custom target valgrind
 find_program(MEMORYCHECK_COMMAND valgrind)
-set(MEMORYCHECK_COMMAND_OPTIONS "-v --leak-check=full --show-reachable=yes --track-origins=yes --vgdb-error=1")
+set(MEMORYCHECK_COMMAND_OPTIONS "--leak-check=full --show-reachable=yes --track-origins=yes")
 add_custom_target(valgrind
         COMMAND ${CMAKE_CTEST_COMMAND}
             --force-new-ctest-process --test-action memcheck

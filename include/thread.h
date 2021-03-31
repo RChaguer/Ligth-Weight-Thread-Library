@@ -37,7 +37,7 @@ extern int thread_join(thread_t thread, void **retval);
  * cet attribut dans votre interface tant que votre thread_exit()
  * n'est pas correctement implémenté (il ne doit jamais retourner).
  */
-extern void thread_exit(void *retval) __attribute__ ((__noreturn__));
+extern void thread_exit(void *retval);//__attribute__ ((__noreturn__));
 
 /* Interface possible pour les mutex */
 typedef struct thread_mutex { int dummy; } thread_mutex_t;
