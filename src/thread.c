@@ -77,6 +77,7 @@ static int init_main(void) {
     main_thread.uctx = main_ctx;
     STAILQ_INSERT_HEAD(&head, &main_thread, threads);
     makecontext(&main_ctx, scheduler, 0);
+    return 0;
 }
 
 /* terminer le thread courant en renvoyant la valeur de retour retval.
