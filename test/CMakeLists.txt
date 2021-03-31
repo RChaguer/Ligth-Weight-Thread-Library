@@ -12,7 +12,7 @@ endfunction(register_test_thread)
 
 # function to add binaries compiled with pthread
 function(register_test_pthread target)
-    add_executable(${target}-pthread EXCLUDE_FROM_ALL ${target}.c)
+    add_executable(${target}-pthread ${target}.c)
     target_link_libraries(${target}-pthread PRIVATE pthread)
     target_compile_options(${target}-pthread PRIVATE -Wall -Wextra)
     target_compile_definitions(${target}-pthread PRIVATE USE_PTHREAD)
