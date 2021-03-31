@@ -1,9 +1,7 @@
 # list test files here
 set(tests 01-main;02-switch;11-join;12-join-main;21-create-many;
         22-create-many-recursive;23-create-many-once;31-switch-many;
-        32-switch-many-join;33-switch-many-cascade;51-fibonacci;
-        61-mutex;62-mutex
-        )
+        32-switch-many-join;33-switch-many-cascade;51-fibonacci)#;61-mutex;62-mutex)
 
 # function add binaries compiled with our thread implementation
 function(register_test_thread target)
@@ -26,12 +24,14 @@ add_custom_target(pthreads)
 
 # add binaries
 foreach(tst IN LISTS tests)
+    # pthread version
     register_test_pthread(${tst})
     add_dependencies(pthreads ${tst}-pthread)
     install(TARGETS ${tst}-pthread DESTINATION bin)
-    # uncomment this when our thread implementation is done
-    #register_test_thread(${tst})
-    #install(TARGETS ${tst} DESTINATION bin)
+
+    # thread version
+    register_test_thread(${tst})
+    install(TARGETS ${tst} DESTINATION bin)
 endforeach()
 
 # add custom target check to run tests
@@ -58,4 +58,57 @@ add_custom_target(valgrind
         )
 
 # add tests here
-# add_test(01-main-pthread 01-main-pthread)
+add_test(01-main 01-main)
+set_tests_properties(01-main PROPERTIES
+        PASS_REGULAR_EXPRESSION "le main yield.*est 0x"
+        )
+
+add_test(02-switch 02-switch)
+set_tests_properties(02-switch PROPERTIES
+        PASS_REGULAR_EXPRESSION "fils1 termin.*fils2.*fils3.*main termin"
+        )
+
+add_test(11-join 11-join)
+set_tests_properties(11-join PROPERTIES
+        PASS_REGULAR_EXPRESSION "join OK"
+        )
+
+add_test(12-join-main 12-join-main)
+set_tests_properties(12-join-main PROPERTIES
+        PASS_REGULAR_EXPRESSION "main.*OK"
+        )
+
+add_test(21-create-many 21-create-many 100)
+set_tests_properties(21-create-many PROPERTIES
+        PASS_REGULAR_EXPRESSION "100 threads"
+        )
+
+add_test(22-create-many-recursive 22-create-many-recursive 100)
+set_tests_properties(22-create-many-recursive PROPERTIES
+        PASS_REGULAR_EXPRESSION "100 threads"
+        )
+
+add_test(23-create-many-once 23-create-many-once 100)
+set_tests_properties(23-create-many-once PROPERTIES
+        PASS_REGULAR_EXPRESSION "100 threads"
+        )
+
+add_test(31-switch-many 31-switch-many 50 200)
+set_tests_properties(31-switch-many PROPERTIES
+        PASS_REGULAR_EXPRESSION "200 yield avec 50 threads"
+        )
+
+add_test(32-switch-many-join 32-switch-many-join 50 200)
+set_tests_properties(32-switch-many-join PROPERTIES
+        PASS_REGULAR_EXPRESSION "200 yield.*50 threads"
+        )
+
+add_test(33-switch-many-cascade 33-switch-many-cascade 50 20)
+set_tests_properties(33-switch-many-cascade PROPERTIES
+        PASS_REGULAR_EXPRESSION "20 yield.*50 threads"
+        )
+
+add_test(51-fibonacci 51-fibonacci 20)
+set_tests_properties(51-fibonacci PROPERTIES
+        PASS_REGULAR_EXPRESSION "20 = 6765"
+        )

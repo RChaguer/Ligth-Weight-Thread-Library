@@ -2,8 +2,6 @@ cmake_minimum_required(VERSION 3.10)
 
 project(thread VERSION 1.0.0 DESCRIPTION "User space Threads implementation")
 
-# uncomment this when our thread implementation is done
-#[[
 add_library(thread SHARED
         src/thread.c
         src/queue.h
@@ -19,7 +17,6 @@ target_include_directories(thread
 target_compile_options(thread PRIVATE -Wall -Wextra)
 
 install(TARGETS thread DESTINATION lib)
-]]
 
 include(CTest)
 
