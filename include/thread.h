@@ -9,6 +9,8 @@
  *     (consommation mémoire, cout d'allocation, ...).
  */
 typedef void * thread_t;
+/*déclaration du type thread*/
+struct thread;
 
 /* recuperer l'identifiant du thread courant.
  */
@@ -40,7 +42,10 @@ extern int thread_join(thread_t thread, void **retval);
 extern void thread_exit(void *retval);//__attribute__ ((__noreturn__));
 
 /* Interface possible pour les mutex */
-typedef struct thread_mutex { int dummy; } thread_mutex_t;
+typedef struct thread_mutex { int dummy;
+    int is_destroyed; // un indice de destruction du mutex
+    struct thread * locker; // adresse vers le thread qui a locker le thread
+} thread_mutex_t;
 int thread_mutex_init(thread_mutex_t *mutex);
 int thread_mutex_destroy(thread_mutex_t *mutex);
 int thread_mutex_lock(thread_mutex_t *mutex);

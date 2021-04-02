@@ -5,6 +5,11 @@
 #include "queue.h"
 #include <valgrind/valgrind.h>
 
+#define EXIT_SUCCESS 0
+#define EXIT_FAILURE -1
+
+
+
 struct thread {
     int is_main;
     int yielded;
@@ -189,7 +194,48 @@ int thread_join(thread_t thread, void **retval) {
     return 0;
 }
 
-int thread_mutex_init(thread_mutex_t *mutex);
-int thread_mutex_destroy(thread_mutex_t *mutex);
-int thread_mutex_lock(thread_mutex_t *mutex);
-int thread_mutex_unlock(thread_mutex_t *mutex);
+/*      Implémentation des mutexes      */
+
+
+int thread_mutex_init(thread_mutex_t *mutex) {
+    if(mutex != NULL) {
+        mutex->is_destroyed = 0;
+        mutex->locker = NULL;
+        return EXIT_SUCCESS;
+    }
+    return EXIT_FAILURE;
+}
+
+int thread_mutex_destroy(thread_mutex_t *mutex) {
+    if(mutex != NULL) {
+        mutex->is_destroyed = 1;
+        mutex->locker = NULL;
+        return EXIT_SUCCESS;
+    }
+    return EXIT_FAILURE;
+}
+
+int thread_mutex_lock(thread_mutex_t *mutex) {
+    if(mutex->is_destroyed == 0){
+        struct thread *curr_th = STAILQ_FIRST(&head); // we should change this to the running thread
+        mutex->locker = curr_th;
+        return EXIT_SUCCESS;
+    }
+    return EXIT_FAILURE;
+}
+int thread_mutex_unlock(thread_mutex_t *mutex) {
+    struct thread *curr_th = STAILQ_FIRST(&head); // we should change this to the running thread
+    if(mutex->is_destroyed == 0 && mutex->locker == curr_th){
+        STAILQ_REMOVE_HEAD(&head, threads);
+        if (!STAILQ_EMPTY(&head)) {
+            struct thread *next_th = STAILQ_FIRST(&head);
+            mutex->locker = next_th; // changer au prochain thread qui va s'executer
+        }
+        else{
+            if(curr_th->yielded){
+                mutex->locker = curr_th; // dans le cas ou on a un seul thread
+            }
+        }
+    }
+    return EXIT_FAILURE;
+}
