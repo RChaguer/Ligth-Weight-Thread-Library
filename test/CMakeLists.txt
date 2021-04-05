@@ -43,7 +43,7 @@ add_custom_target(check
 # add custom target graphs
 add_custom_target(graphs
         COMMAND python3 ${CMAKE_SOURCE_DIR}/graphs/draw_script.py
-        DEPENDS ${tests} list(TRANSFORM ${tests} APPEND pthread)
+        DEPENDS ${tests}
         )
 
 # add custom target valgrind
