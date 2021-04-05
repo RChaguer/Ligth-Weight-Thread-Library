@@ -102,7 +102,7 @@ void thread_runner(void) {
     struct thread *curr_th = STAILQ_FIRST(&runnable_hd);
 
     // call the entry function of the thread and pass the return value to thread_exit
-    thread_exit(curr_th->func((void *)curr_th->funcarg));
+    thread_exit(curr_th->func(curr_th->funcarg));
 }
 
 /* recuperer l'identifiant du thread courant.
@@ -203,45 +203,56 @@ int thread_join(thread_t thread, void **retval) {
 /*      Implémentation des mutexes      */
 
 
-/*int thread_mutex_init(thread_mutex_t *mutex) {
-    if(mutex != NULL) {
+int thread_mutex_init(thread_mutex_t *mutex) {
+    if (mutex != NULL) {
         mutex->is_destroyed = 0;
         mutex->locker = NULL;
         return EXIT_SUCCESS;
     }
+
     return EXIT_FAILURE;
 }
 
 int thread_mutex_destroy(thread_mutex_t *mutex) {
-    if(mutex != NULL) {
+    if (mutex != NULL) {
         mutex->is_destroyed = 1;
         mutex->locker = NULL;
         return EXIT_SUCCESS;
     }
+
     return EXIT_FAILURE;
 }
 
 int thread_mutex_lock(thread_mutex_t *mutex) {
-    if(mutex->is_destroyed == 0){
-        struct thread *curr_th = STAILQ_FIRST(&runnable_hd); // we should change this to the running thread
-        mutex->locker = curr_th;
-        return EXIT_SUCCESS;
+    struct thread *curr_th = STAILQ_FIRST(&runnable_hd);
+
+    //  we don't block if mutex not initialized/destroyed or owned by calling thread
+    if (mutex == NULL || mutex->is_destroyed != 0 || mutex->locker == (thread_t)curr_th) {
+        return EXIT_FAILURE;
     }
-    return EXIT_FAILURE;
+
+    // otherwise we block until mutex is available
+    while (mutex->locker != NULL) {
+        // eventually we could yield to locker thread directly ?
+        thread_yield();
+    }
+
+    // lock the mutex
+    mutex->locker = (thread_t)curr_th;
+
+    return EXIT_SUCCESS;
 }
+
 int thread_mutex_unlock(thread_mutex_t *mutex) {
-    struct thread *curr_th = STAILQ_FIRST(&runnable_hd); // we should change this to the running thread
-    if(mutex->is_destroyed == 0 && mutex->locker == curr_th){
-        STAILQ_REMOVE_HEAD(&runnable_hd, threads);
-        if (!STAILQ_EMPTY(&runnable_hd)) {
-            struct thread *next_th = STAILQ_FIRST(&runnable_hd);
-            mutex->locker = next_th; // changer au prochain thread qui va s'executer
-        }
-        else{
-            if(curr_th->yielded){
-                mutex->locker = curr_th; // dans le cas ou on a un seul thread
-            }
-        }
+    struct thread *curr_th = STAILQ_FIRST(&runnable_hd);
+
+    // unlocking a mutex not owned by calling thread is an error
+    if (mutex == NULL || mutex->is_destroyed != 0 || mutex->locker != (thread_t)curr_th) {
+        return EXIT_FAILURE;
     }
-    return EXIT_FAILURE;
-}*/
+
+    // release mutex
+    mutex->locker = NULL;
+
+    return EXIT_SUCCESS;
+}

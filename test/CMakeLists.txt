@@ -1,7 +1,7 @@
 # list test files here
 set(tests 01-main;02-switch;11-join;12-join-main;21-create-many;
         22-create-many-recursive;23-create-many-once;31-switch-many;
-        32-switch-many-join;33-switch-many-cascade;51-fibonacci)#;61-mutex;62-mutex)
+        32-switch-many-join;33-switch-many-cascade;51-fibonacci;61-mutex;62-mutex)
 
 # function add binaries compiled with our thread implementation
 function(register_test_thread target)
@@ -112,3 +112,10 @@ add_test(51-fibonacci 51-fibonacci 20)
 set_tests_properties(51-fibonacci PROPERTIES
         PASS_REGULAR_EXPRESSION "20 = 6765"
         )
+
+add_test(61-mutex 61-mutex 20)
+#[[set_tests_properties(61-mutex PROPERTIES
+        PASS_REGULAR_EXPRESSION "20 = 6765"
+        )]]
+
+add_test(62-mutex 62-mutex 10)
