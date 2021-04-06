@@ -1,6 +1,6 @@
 #include <ucontext.h>
 #include <stdlib.h>
-#include "../include/thread.h"
+#include "thread.h"
 #include "queue.h"
 #include <valgrind/valgrind.h>
 
