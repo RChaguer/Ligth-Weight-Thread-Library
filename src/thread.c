@@ -1,11 +1,19 @@
 #include <ucontext.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include "thread.h"
 #include "queue.h"
 #include <valgrind/valgrind.h>
 
 #define STACK_SIZE 64*1024
 #define JOINABLE (1U << 0)
+#define MAIN (1U << 1)
+
+typedef enum {
+  LOW,
+  NORMAL,
+  HIGH
+} priority;
 
 struct thread {
     void *(*func)(void *);
@@ -14,24 +22,37 @@ struct thread {
     unsigned int flags;
     int valgrind_stackid;
     ucontext_t uctx;
+    priority p;
+    struct thread *master;
     TAILQ_ENTRY(thread) threads;
 };
 
-// init FIFO for runnable threads
+// init FIFO for normal priority runnable threads
 typedef TAILQ_HEAD(runnable_fifo, thread) runnable_hd_t;
 runnable_hd_t runnable_hd = TAILQ_HEAD_INITIALIZER(runnable_hd);
 
-static int main_initialized;
+// init FIFO for high priority runnable threads
+typedef TAILQ_HEAD(high_prio_fifo, thread) high_prio_hd_t;
+high_prio_hd_t high_prio_hd = TAILQ_HEAD_INITIALIZER(high_prio_hd);
+
+// init FIFO for abandoned threads; threads who exited but never got joined
+typedef TAILQ_HEAD(abandoned_fifo, thread) abandoned_hd_t;
+abandoned_hd_t abandoned_hd = TAILQ_HEAD_INITIALIZER(abandoned_hd);
+
+// main thread
+struct thread main_th;
+// current thread
+struct thread *current_th;
 
 /**
- * frees the memory allocated to main thread / context
- * when main() returns/exits with main_thread still in FIFO;
- * meaning no other thread called thread_join on main_thread
+ * frees the memory allocated to the abandoned threads
+ * when main() returns/exits.
  */
-void free_main_thread(void) {
-    // if main wasn't freed due to a join by another thread
-    if (!TAILQ_EMPTY(&runnable_hd)) {
-        struct thread *th = TAILQ_FIRST(&runnable_hd);
+__attribute__ ((destructor)) void free_thread(void) {
+    // free the abandoned threads
+    while (!TAILQ_EMPTY(&abandoned_hd)) {
+        struct thread *th = TAILQ_FIRST(&abandoned_hd);
+        TAILQ_REMOVE(&abandoned_hd, th, threads);
         VALGRIND_STACK_DEREGISTER(th->valgrind_stackid);
         free(th->uctx.uc_stack.ss_sp);
         free(th);
@@ -40,31 +61,17 @@ void free_main_thread(void) {
 
 /**
  * initializes the main thread (and context) and adds it to runnable FIFO
- * @return 0 if main initialization successful, -1 on error
  */
-int init_main_thread(void) {
-    // mark main thread initialized
-    main_initialized = 1;
+__attribute__((constructor)) void init_thread(void) {
+    // set the flag and priority of main context
+    main_th.flags |= MAIN;
+    main_th.p = NORMAL;
 
-    // register cleanup function after main() returns/exits
-    atexit(free_main_thread);
-
-    // allocates memory for a new struct thread instance
-    struct thread *main_th = malloc(sizeof(struct thread));
-    main_th->flags = 0U;
-
-    // set up the context for the main thread
-    getcontext(&main_th->uctx);
-    main_th->uctx.uc_link = NULL;
-    main_th->uctx.uc_stack.ss_size = STACK_SIZE;
-    main_th->uctx.uc_stack.ss_sp = malloc(main_th->uctx.uc_stack.ss_size);
-    main_th->valgrind_stackid = VALGRIND_STACK_REGISTER(main_th->uctx.uc_stack.ss_sp,
-                                                    main_th->uctx.uc_stack.ss_sp + main_th->uctx.uc_stack.ss_size);
+    // init the context for the main thread
+    getcontext(&main_th.uctx);
 
     // add main thread to runnable fifo
-    TAILQ_INSERT_HEAD(&runnable_hd, main_th, threads);
-
-    return 0;
+    current_th = &main_th;
 }
 
 /* terminer le thread courant en renvoyant la valeur de retour retval.
@@ -77,21 +84,56 @@ int init_main_thread(void) {
  */
 void thread_exit(void *retval) {
     // get the thread at the head of runnable FIFO
-    struct thread *curr_th = TAILQ_FIRST(&runnable_hd);
+    struct thread *curr_th = current_th;
 
-    // remove it from runnable FIFO
-    TAILQ_REMOVE(&runnable_hd,curr_th, threads);
+    // add it to abandoned FIFO
+    if (!(curr_th->flags & MAIN)) {
+        TAILQ_INSERT_TAIL(&abandoned_hd, curr_th, threads);
+    }
 
-    // set retval in the thread structure
-    curr_th->retval = retval;
+    // change current exiting thread master priority back to high
+    if (curr_th->master) {
+        curr_th->master->p = HIGH;
+        TAILQ_INSERT_HEAD(&high_prio_hd, curr_th->master, threads);
+    }
 
-    // make the thread joinable
-    curr_th->flags |= JOINABLE;
+    // if this is not the last thread in runnable FIFO
+    if (!TAILQ_EMPTY(&high_prio_hd)) {
+        // set retval in the thread structure
+        curr_th->retval = retval;
 
-    // set context of the next thread in runnable FIFO
-    if (!TAILQ_EMPTY(&runnable_hd)) {
-        struct thread *next_th = TAILQ_FIRST(&runnable_hd);
-        setcontext(&next_th->uctx);
+        // make the thread joinable
+        curr_th->flags |= JOINABLE;
+
+        // resume context of the next thread in runnable FIFO
+        struct thread *old_th = current_th;
+        current_th = TAILQ_FIRST(&high_prio_hd);
+        
+        // remove it from runnable FIFO
+        TAILQ_REMOVE(&high_prio_hd, current_th, threads);
+
+        swapcontext(&old_th->uctx, &current_th->uctx);
+
+    } else if (!TAILQ_EMPTY(&runnable_hd)) {
+        // set retval in the thread structure
+        curr_th->retval = retval;
+
+        // make the thread joinable
+        curr_th->flags |= JOINABLE;
+
+        // resume context of the next thread in runnable FIFO
+        struct thread *old_th = current_th;
+        current_th = TAILQ_FIRST(&runnable_hd);
+        
+        // remove it from runnable FIFO
+        TAILQ_REMOVE(&runnable_hd, current_th, threads);
+
+        swapcontext(&old_th->uctx, &current_th->uctx);
+
+    } else if (!(curr_th->flags & MAIN)) { // the last thread isnt the main thread
+        // restore context of main thread to clean up with destructor
+        current_th = &main_th;
+        setcontext(&main_th.uctx);
     }
 
     exit(EXIT_SUCCESS);
@@ -99,7 +141,7 @@ void thread_exit(void *retval) {
 
 void thread_runner(void) {
     // get the thread at the head of runnable FIFO
-    struct thread *curr_th = TAILQ_FIRST(&runnable_hd);
+    struct thread *curr_th = current_th;
 
     // call the entry function of the thread and pass the return value to thread_exit
     thread_exit(curr_th->func(curr_th->funcarg));
@@ -108,14 +150,8 @@ void thread_runner(void) {
 /* recuperer l'identifiant du thread courant.
  */
 thread_t thread_self(void) {
-    // initialize the main thread if not done already
-    if (!main_initialized) {
-        init_main_thread();
-    }
-
     // get the calling thread from runnable fifo
-    struct thread *curr_thread = TAILQ_FIRST(&runnable_hd);
-    return (thread_t)curr_thread;
+    return (thread_t)current_th;
 }
 
 /* creer un nouveau thread qui va exécuter la fonction func avec l'argument funcarg.
@@ -128,6 +164,8 @@ int thread_create(thread_t *newthread, void *(*func)(void *), void *funcarg) {
     thn->func = func;
     thn->funcarg = funcarg;
     thn->retval = NULL;
+    thn->p = NORMAL;
+    thn->master = NULL;
 
     // set the thread id as the pointer to its struct thread instance
     *newthread = (thread_t)thn;
@@ -151,55 +189,74 @@ int thread_create(thread_t *newthread, void *(*func)(void *), void *funcarg) {
 /* passer la main à un autre thread.
  */
 int thread_yield(void) {
-    // initialize the main thread if not done already
-    if (!main_initialized) {
-        init_main_thread();
+    // get backup value of old thread
+    struct thread *old_th = current_th;
+
+    // insert old thread at tail
+    switch (old_th->p) {
+        case NORMAL:
+            TAILQ_INSERT_TAIL(&runnable_hd, old_th, threads);
+            break;
+        case HIGH:
+            TAILQ_INSERT_TAIL(&high_prio_hd, old_th, threads);
+            break;
+        case LOW:
+            break;
     }
 
-    // get the thread who yielded from head of runnable FIFO
-    struct thread *curr_th = TAILQ_FIRST(&runnable_hd);
-
-    // remove it from runnable FIFO
-    TAILQ_REMOVE(&runnable_hd,curr_th,threads);
-
-    // insert it at tail
-    TAILQ_INSERT_TAIL(&runnable_hd, curr_th, threads);
-
-    // get the next thread in runnable FIFO
-    struct thread *next_th = TAILQ_FIRST(&runnable_hd);
-
+    // get the next thread in runnable FIFO and remove it from runnable FIFO
+    if (!TAILQ_EMPTY(&high_prio_hd)) {
+        current_th = TAILQ_FIRST(&high_prio_hd);
+        TAILQ_REMOVE(&high_prio_hd, current_th, threads);
+    } else {
+        current_th = TAILQ_FIRST(&runnable_hd);
+        TAILQ_REMOVE(&runnable_hd, current_th, threads);
+    }
+   
     // swap to the context of next thread
-    swapcontext(&curr_th->uctx, &next_th->uctx);
+    swapcontext(&old_th->uctx, &current_th->uctx);
 
     return 0;
 }
+
 /* Cette fonction permet de passer la main au thread t*/
 int thread_yield_to(struct thread * t) {
-    // initialize the main thread if not done already
-    if (!main_initialized) {
-        init_main_thread();
+    // get backup value of old thread
+    struct thread *old_th = current_th;
+
+    // insert old thread at tail
+    switch (old_th->p) {
+        case NORMAL:
+            TAILQ_INSERT_TAIL(&runnable_hd, old_th, threads);
+            break;
+        case HIGH:
+            TAILQ_INSERT_TAIL(&high_prio_hd, old_th, threads);
+            break;
+        case LOW:
+            break;
     }
 
-    // get the thread who yielded from head of runnable FIFO
-    struct thread *curr_th = TAILQ_FIRST(&runnable_hd);
-
-    // remove it from runnable FIFO
-    TAILQ_REMOVE(&runnable_hd,curr_th,threads);
-
-    // insert it at tail
-    TAILQ_INSERT_TAIL(&runnable_hd, curr_th, threads);
-    
     // remove the thread t from the list
-    TAILQ_REMOVE(&runnable_hd,t,threads);
+    switch (t->p) {
+        case NORMAL:
+            TAILQ_REMOVE(&runnable_hd, t, threads);
+            break;
+        case HIGH:
+            TAILQ_REMOVE(&high_prio_hd, t, threads);
+            break;
+        case LOW:
+            break;
+    }
 
-    // Inserting the thread t in the head of the FIFO
-    TAILQ_INSERT_HEAD(&runnable_hd, t, threads);
+    // get the next thread in runnable FIFO
+    current_th = t;
 
     // swap to the context of next thread
-    swapcontext(&curr_th->uctx, &t->uctx);
+    swapcontext(&old_th->uctx, &current_th->uctx);
 
     return 0;
 }
+
 /* attendre la fin d'exécution d'un thread.
  * la valeur renvoyée par le thread est placée dans *retval.
  * si retval est NULL, la valeur de retour est ignorée.
@@ -209,18 +266,32 @@ int thread_join(thread_t thread, void **retval) {
     struct thread *th = (struct thread *)thread;
 
     // loop until thread becomes JOINABLE
-    while (!(th->flags & JOINABLE)) {
+    if (!(th->flags & JOINABLE)) {
+        th->master = current_th;
+        current_th->p = LOW;
+        if(th->p == NORMAL) {
+            TAILQ_REMOVE(&runnable_hd, th, threads);
+            TAILQ_INSERT_TAIL(&high_prio_hd, th, threads);
+            th->p = HIGH;
+        }
         thread_yield();
+    }
+
+    // remove the thread from abandonned FIFO
+    if (!(th->flags & MAIN)) {
+        TAILQ_REMOVE(&abandoned_hd, th, threads);
     }
 
     // if retval is not NULL, get the return val set by thread_exit
     if (retval)
         *retval = th->retval;
 
-    // free memory allocated to the thread/context
-    VALGRIND_STACK_DEREGISTER(th->valgrind_stackid);
-    free(th->uctx.uc_stack.ss_sp);
-    free(th);
+    // free memory allocated to the thread if not main thread
+    if (!(th->flags & MAIN)) {
+        VALGRIND_STACK_DEREGISTER(th->valgrind_stackid);
+        free(th->uctx.uc_stack.ss_sp);
+        free(th);
+    }
 
     return 0;
 }
@@ -249,7 +320,7 @@ int thread_mutex_destroy(thread_mutex_t *mutex) {
 }
 
 int thread_mutex_lock(thread_mutex_t *mutex) {
-    struct thread *curr_th = TAILQ_FIRST(&runnable_hd);
+    struct thread *curr_th = current_th;
 
     //  we don't block if mutex not initialized/destroyed or owned by calling thread
     if (mutex == NULL || mutex->is_destroyed != 0 || mutex->locker == (thread_t)curr_th) {
@@ -269,7 +340,7 @@ int thread_mutex_lock(thread_mutex_t *mutex) {
 }
 
 int thread_mutex_unlock(thread_mutex_t *mutex) {
-    struct thread *curr_th = TAILQ_FIRST(&runnable_hd);
+    struct thread *curr_th = current_th;
 
     // unlocking a mutex not owned by calling thread is an error
     if (mutex == NULL || mutex->is_destroyed != 0 || mutex->locker != (thread_t)curr_th) {

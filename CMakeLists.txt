@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.3)
 
-project(thread VERSION 1.0.0 DESCRIPTION "User space Threads implementation")
+project(thread)
 
 add_library(thread SHARED
         src/thread.c

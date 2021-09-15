@@ -46,6 +46,12 @@ add_custom_target(graphs
         DEPENDS ${tests}
         )
 
+# add custom target fibo_perf
+add_custom_target(fibo_perf
+        COMMAND python3 ${CMAKE_SOURCE_DIR}/graphs/fibo_script.py
+        DEPENDS 51-fibonacci
+        )
+
 # add custom target valgrind
 find_program(MEMORYCHECK_COMMAND valgrind)
 set(MEMORYCHECK_COMMAND_OPTIONS "--leak-check=full --show-reachable=yes --track-origins=yes")
@@ -114,8 +120,5 @@ set_tests_properties(51-fibonacci PROPERTIES
         )
 
 add_test(61-mutex 61-mutex 20)
-#[[set_tests_properties(61-mutex PROPERTIES
-        PASS_REGULAR_EXPRESSION "20 = 6765"
-        )]]
 
-add_test(62-mutex 62-mutex 10)
+add_test(62-mutex 62-mutex 20)
